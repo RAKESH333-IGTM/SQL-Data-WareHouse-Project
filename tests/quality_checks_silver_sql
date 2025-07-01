@@ -1,1 +1,275 @@
+---==============================================---
+----------------TESTING AND QUALITY CHECKS----------
+---==============================================---
+
+
+---==============================================---
+---TESTING AND QUALITY CHECKS OF CRM DATA SOURCE ---
+---==============================================---
+
+---======================================================
+---TESTS: crm_cust_info--------------
+---======================================================
+ SELECT * FROM bronze.crm_cust_info
+
+---Detecting the DUPLICATE and NULLS THEN RESOLVE IT--
+
+ SELECT * FROM (
+	SELECT *,
+	ROW_NUMBER() OVER(PARTITION BY cst_id ORDER BY cst_create_date DESC) rn
+	FROM  bronze.crm_cust_info
+)t 
+WHERE rn = 1
+/*
+SELECT 
+cst_id,
+COUNT(*)
+FROM bronze.crm_cust_info
+GROUP BY cst_id
+HAVING COUNT(*) > 1 OR cst_id = NULL */
+
+---QUALITY CHECK(Checking for unwanted spaces)---
+
+SELECT 
+	cst_firstname,
+	LEN(cst_firstname) Flen,
+	LEN(TRIM(cst_firstname)) Llen,
+	cst_lastname
+FROM bronze.crm_cust_info
+WHERE LEN(cst_firstname) != LEN(TRIM(cst_firstname))
+
+-----Checking spaces after trimming-----------
+SELECT * FROM (
+	SELECT *, 
+		TRIM(cst_firstname) cst_first,
+		TRIM(cst_lastname) cst_last
+	FROM bronze.crm_cust_info
+)t
+WHERE LEN(cst_first) != LEN(TRIM(cst_first))
+
+-----SCALING AND STANDARDIZATION--------------
+--Checking---
+SELECT DISTINCT cst_marital_status 
+
+FROM bronze.crm_cust_info
+
+---RESOLVING---
+SELECT * ,
+	CASE WHEN cst_marital_status = 'S' THEN 'Single'
+		 WHEN cst_marital_status = 'M' THEN 'Married'
+		 ELSE 'n/a'
+	END
+FROM bronze.crm_cust_info
+
+---CHECKING---
+SELECT DISTINCT cst_gndr
+
+FROM bronze.crm_cust_info
+
+--RESOLVING----
+SELECT *,
+CASE WHEN UPPER(TRIM(cst_gndr)) = 'F' THEN 'Female'
+     WHEN UPPER(TRIM(cst_gndr)) = 'M' THEN 'Male'
+	 ELSE 'n/a'
+END
+FROM  bronze.crm_cust_info
+
+---======================================================
+---TESTS: crm_prd_info--------------
+---======================================================
+SELECT * FROM bronze.crm_prd_info
+
+--Detecting Duplicates and null values---
+SELECT 
+	prd_id,
+	COUNT(*) cnt
+FROM bronze.crm_prd_info
+GROUP BY prd_id
+HAVING COUNT(*)  != 1
+----NO DUPLICATES FOUND---
+SELECT  
+ prd_id
+FROM bronze.crm_prd_info
+WHERE prd_id IS NULL
+-----NO NULL VALUES FOUND---
+---EXTRACTING KEYS---
+SELECT * ,
+	SUBSTRING(prd_key,1,5) prd_key,
+	SUBSTRING(prd_key,7,LEN(prd_key)) prd_key
+FROM bronze.crm_prd_info
+
+---checking nulls in integrs like prd_cost-------
+SELECT 
+ prd_cost,
+ COUNT(*)
+FROM bronze.crm_prd_info
+GROUP BY prd_cost
+HAVING Prd_cost IS NULL
+--REPLACNG NULL VALUES WITH 0---
+SELECT * FROM (
+	SELECT   ---CLEARED NULL VALUES
+	  prd_cost,
+	  ISNULL(prd_cost,0) prd_null
+	FROM bronze.crm_prd_info
+)T
+ WHERE prd_null IS NULL
+ -----STANDARDIZATION AND NORMALIZATION----
+-----Checking----
+SELECT 
+ DISTINCT prd_line
+FROM bronze.crm_prd_info
+
+---Resolving---
+SELECT *, 
+	CASE UPPER(TRIM(prd_line))
+		WHEN 'M' THEN 'Mountain'
+		WHEN 'R' THEN 'Road'
+		WHEN 'S' THEN 'other sales'
+		WHEN 'T' THEN 'Touring'
+		ELSE 'n/a'
+	END 
+FROM bronze.crm_prd_info
+---DATES NORMALIZATION OR RESOLVING THE OUTLIERS--------
+---checking the outlier dates---
+SELECT * 
+FROM bronze.crm_prd_info
+WHERE prd_end_dt < prd_start_dt
+
+---resolving the dates---------
+SELECT *, 
+LEAD(prd_start_dt) OVER(PARTITION BY prd_key ORDER BY prd_start_dt) lead_dates
+FROM bronze.crm_prd_info
+
+---======================================================
+---TESTS: crm_sales_details--------------
+---======================================================
+SELECT * FROM bronze.crm_sales_details
+--Detecting duplicates-----------
+SELECT  
+	sls_cust_id,
+	COUNT(*)
+FROM bronze.crm_sales_details
+GROUP BY sls_cust_id
+HAVING COUNT(*) > 1
+----Removing duplicates----
+SELECT * ,
+ROW_NUMBER(sls_cust_id) OVER(PARTITION BY sls_cust_id ORDER BY )
+FROM bronze.crm_sales_details
+
+---CHECKING THE DATE QUALITY--
+SELECT sls_order_dt 
+FROM bronze.crm_sales_details
+--WHERE sls_order_dt <= 0
+WHERE LEN(sls_order_dt) != 8 
+
+---converting the int to date-----
+SELECT * FROM (
+	SELECT  
+	sls_order_dt,
+	CASE WHEN LEN(sls_order_dt) != 8 OR sls_order_dt <= 0 THEN NULL
+		 ELSE CAST(CAST(sls_order_dt AS VARCHAR) AS DATE) 
+	END Formatted_date
+	FROM bronze.crm_sales_details
+)T 
+WHERE Formatted_date IS NULL
+
+---checking the date difference between the orderdate, ship date, due date------
+SELECT * FROM bronze.crm_sales_details ---use the below condition for the cleaned table for checking purpose,because the source table has integers not dates-------
+WHERE sls_order_dt > sls_order_dt OR sls_ship_dt > sls_due_dt
+
+----Checking data consistency:- sales,quantity, and price----------
+----sales = quantity * price---Business rule--
+----IT Doesnt allows nulls,negative numbers and 0's.
+
+SELECT 
+	sls_sales,
+	sls_quantity,
+	sls_price
+FROM bronze.crm_sales_details
+WHERE sls_sales != sls_quantity * sls_price OR 
+sls_sales IS NULL OR sls_quantity IS NULL OR sls_price IS NULL
+OR sls_sales <=0 OR sls_quantity <=0 OR sls_price <=0
+
+---BUSINESS RULES:-
+---If sales is negative, zero or null then derive it using quantity and price like sales= price * quantity
+---If price is 0 or null, then derive it using sales and quantity
+---if price is negative convert it to positive by using ABS function
+
+----resolving---
+SELECT 
+	sls_sales,
+	sls_quantity,
+	sls_price,
+	CASE WHEN sls_sales IS NULL OR sls_sales <= 0 OR sls_sales != sls_quantity * ABS(sls_price) THEN  sls_quantity * ABS(sls_price)
+	     ELSE sls_sales
+	END updated_sales,
+	sls_quantity,
+	CASE WHEN sls_price IS NULL OR sls_price <=0 THEN sls_sales/NULLIF(sls_quantity,0)
+	     ELSE sls_price
+	END updated_price
+FROM bronze.crm_sales_details
+WHERE sls_sales != sls_quantity * sls_price OR 
+sls_sales IS NULL OR sls_quantity IS NULL OR sls_price IS NULL
+OR sls_sales <=0 OR sls_quantity <=0 OR sls_price <=0
+
+
+
+---==============================================---
+---TESTING AND QUALITY CHECKS OF ERP DATA SOURCE ---
+---==============================================---
+
+---======================================================
+---TESTS: erp_cust_az12--------------
+---======================================================
+SELECT * FROM bronze.erp_cust_az12
+
+---String extraction---(extracting key from a string for futher joining the tables)
+SELECT  
+ cid,
+ CASE WHEN cid LIKE 'NAS%' THEN SUBSTRING(cid,4,LEN(cid))
+      ELSE cid
+ END cust_key
+FROM bronze.erp_cust_az12
+WHERE cid  LIKE 'NAS%'
+
+----Checking the birth date----(Outliers)
+SELECT 
+	bdate,
+	YEAR(bdate) b_year
+FROM bronze.erp_cust_az12
+WHERE YEAR(bdate) < 1925 OR YEAR(bdate) > 2025
+
+---Resolving and checking the bdate outliers----------
+SELECT * FROM (
+SELECT  
+	bdate,
+	CASE WHEN bdate > GETDATE() THEN NULL
+		 ELSE bdate
+	END updated_bdate
+FROM bronze.erp_cust_az12
+)t 
+WHERE updated_bdate = GETDATE()  ---This subquery is used to check the outlier date/future bdate.
+
+-----Checking AND Resolving gen-----(Normalized the names)
+
+SELECT DISTINCT
+	gen,
+	CASE WHEN UPPER(TRIM(gen)) IN ('F','FEMALE') THEN 'Female'
+		 WHEN UPPER(TRIM(gen)) IN ('M','MALE') THEN 'Male'
+		 ELSE 'n/a'
+END
+FROM bronze.erp_cust_az12
+
+---======================================================
+---TESTS: erp_loc_a101--------------
+---======================================================
+SELECT * FROM bronze.erp_loc_a101
+SELECT DISTINCT 
+  cntry,
+  CASE WHEN UPPER(TRIM(cntry)) IN ('DE','GERMANY') THEN 'Germany'
+       WHEN UPPER(TRIM(cntry)) IN ('USA','US') THEN 'United States'
+	   WHEN cntry IS NULL OR cntry = '' THEN 'n/a'
+	   ELSE cntry
+  END updated_cntry
+FROM bronze.erp_loc_a101
 
