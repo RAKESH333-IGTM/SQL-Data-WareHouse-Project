@@ -1,1 +1,77 @@
 
+---TESTS---
+---CUSTOMERS TABLE---
+--------=====================================================================----------
+-----------Data integration and quality check of CUSTOMERS TABLE(Gold layer)----------
+--------=====================================================================----------
+
+-----Customer tables joining and quality check after joined the tables of customers info---
+SELECT cst_id, COUNT(*) FROM (
+SELECT  
+	ci.cst_id,
+	ci.cst_key,
+	ci.cst_firstname,
+	ci.cst_lastname,
+	ci.cst_marital_status,
+	ci.cst_gndr,
+	ci.cst_create_date,
+	ci.dwh_create_date,
+	ca.bdate,
+	ca.gen,
+	la.cntry
+FROM silver.crm_cust_info ci
+LEFT JOIN silver.erp_cust_az12 ca
+ON ci.cst_key = ca.cid
+LEFT JOIN silver.erp_loc_a101 la
+ON ci.cst_key = la.cid
+)T
+ GROUP BY cst_id
+ HAVING COUNT(*) > 1
+
+ ---Quality check of gender in customer table----
+ SELECT DISTINCT  ---Integrating both gender from different tables-------sticking to the master source system gender then integrated the other---
+	 ci.cst_gndr, 
+	 ca.gen,
+	 /*
+	 CASE WHEN UPPER(TRIM(cst_gndr)) = 'MALE' THEN 'Male'
+	      WHEN UPPER(TRIM(cst_gndr)) = 'FEMALE' THEN 'Female'
+		  WHEN UPPER(TRIM(cst_gndr)) IS NULL THEN 'n/a'
+		  ELSE cst_gndr
+	END new_gndr
+	*/
+	CASE WHEN cst_gndr != 'n/a'  THEN cst_gndr  
+	     ELSE COALESCE(gen,'n/a')
+	END new_gndr
+ FROM silver.crm_cust_info ci
+LEFT JOIN silver.erp_cust_az12 ca
+ON ci.cst_key = ca.cid
+LEFT JOIN silver.erp_loc_a101 la
+ON ci.cst_key = la.cid
+
+---TESTS---
+---PRODUCTS TABLE---
+--------=====================================================================----------
+-----------Data integration and quality check of PRODUCTS TABLE(Gold Layer)------------
+--------=====================================================================----------
+----------Checking the duplicates------
+SELECT prd_key,COUNT(*) FROM (
+	SELECT 
+		pd.prd_id,
+		pd.cat_id,
+		pd.prd_key,
+		pd.prd_nm,
+		pd.prd_cost,
+		pd.prd_line,
+		pd.prd_start_dt,
+		pd.cst_create_date,
+		pd.dwh_create_date,
+		pc.cat,
+		pc.subcat,
+		pc.maintenance
+	FROM silver.crm_prd_info AS pd
+	LEFT JOIN silver.erp_px_cat_g1v2 pc
+	ON pd.cat_id = pc.id
+	WHERE prd_end_dt IS NULL  ---This will gets the latest end date by deleting the other----
+)T 
+GROUP BY  prd_key
+HAVING COUNT(*) > 1  ---there is no
