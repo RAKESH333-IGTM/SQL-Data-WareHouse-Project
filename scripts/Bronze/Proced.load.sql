@@ -7,9 +7,10 @@ GO
 
 SET QUOTED_IDENTIFIER ON
 GO
-
------LOADINGT THE DATA INTO THE TABLE-----------
-CREATE   PROCEDURE [bronze].[load_bronze] AS ---Creating stored procedur is for the frequently used queries-----
+-------=========================================-------
+-------LOADING CRM SOURCE DATA INTO THE BRONZE TABLE---
+-------=========================================-------
+CREATE   PROCEDURE [bronze].[load_bronze] AS          ---Creating stored procedur is for the frequently used queries-----
 BEGIN
     DECLARE @Start_time DATETIME, @End_time DATETIME 
     BEGIN TRY
@@ -31,22 +32,23 @@ BEGIN
 		PRINT 'Load Duration: ' + CAST(DATEDIFF(second,@Start_time,@End_time) AS NVARCHAR) + 'seconds';
 		PRINT '--------------------------------------'
 
-		--SELECT * FROM bronze.crm_cust_info
-		--SELECT COUNT(*) FROM bronze.crm_cust_info
 
-
+		PRINT '-------------------------------------'
+		SET @Start_time = GETDATE();
 		TRUNCATE TABLE bronze.crm_prd_info 
 		BULK INSERT bronze.crm_prd_info
 		FROM 'C:\DWH Project\sql-data-warehouse-project\sql-data-warehouse-project\datasets\source_crm\prd_info.csv'
-
 		WITH (
 			FIRSTROW = 2,
 			FIELDTERMINATOR = ',',
 			TABLOCK
 		);
-
-		--SELECT * FROM bronze.crm_prd_info
-
+		SET @End_time = GETDATE();
+		PRINT 'Loading Duration:' + CAST(DATEDIFF(second,@Start_time,@End_time) AS NVARCHAR) + 'seconds';
+		PRINT '-------------------------------------'
+		
+		PRINT '-------------------------------------'
+		SET @Start_time = GETDATE();
 		TRUNCATE TABLE bronze.crm_sales_details 
 		BULK INSERT bronze.crm_sales_details
 		FROM 'C:\DWH Project\sql-data-warehouse-project\sql-data-warehouse-project\datasets\source_crm\sales_details.csv'
@@ -55,10 +57,18 @@ BEGIN
 			FIELDTERMINATOR = ',',
 			TABLOCK
 		);
-		--SELECT * FROM bronze.crm_sales_details
+		SET @End_time = GETDATE();
+		PRINT 'Loading Duration:' + CAST(DATEDIFF(second,@Start_time,@End_time) AS NVARCHAR) + 'seconds';
+		PRINT '-------------------------------------'
+		
+		
 
-		--============== --INGECTING THE ERP SOURCE DATA INTO THE TABLES--===========================--
-
+-----=========================================--------
+-----LOADING ERP SOURCE DATA INTO THE BRONZE TABLE-----------
+-----=========================================--------
+			
+		PRINT '-------------------------------------'
+		SET @Start_time = GETDATE();
 		TRUNCATE TABLE bronze.erp_cust_az12
 		BULK INSERT bronze.erp_cust_az12
 		FROM 'C:\DWH Project\sql-data-warehouse-project\sql-data-warehouse-project\datasets\source_erp\cust_az12.csv'
@@ -67,9 +77,12 @@ BEGIN
 		   FIELDTERMINATOR = ',',
 		   TABLOCK
 		);
-		--SELECT * FROM bronze.erp_cust_az12
+		SET @End_time = GETDATE();
+		PRINT 'Loading Duration:' + CAST(DATEDIFF(second,@Start_time,@End_time) AS NVARCHAR) + 'seconds';
+		PRINT '-------------------------------------'
 
-
+		PRINT '-------------------------------------'
+		SET @Start_time = GETDATE();
 		TRUNCATE TABLE bronze.erp_loc_a101
 		BULK INSERT bronze.erp_loc_a101
 		FROM 'C:\DWH Project\sql-data-warehouse-project\sql-data-warehouse-project\datasets\source_erp\loc_a101.csv'
@@ -78,9 +91,12 @@ BEGIN
 			FIELDTERMINATOR = ',',
 			TABLOCK
 		);
-		--SELECT * FROM bronze.erp_loc_a101
+		SET @End_time = GETDATE();
+		PRINT 'Loading Duration:' + CAST(DATEDIFF(second,@Start_time,@End_time) AS NVARCHAR) + 'seconds';
+		PRINT '-------------------------------------'
 
-
+		PRINT '-------------------------------------'
+		SET @Start_time = GETDATE();
 		TRUNCATE TABLE bronze.erp_px_cat_g1v2
 		BULK INSERT bronze.erp_px_cat_g1v2
 		FROM 'C:\DWH Project\sql-data-warehouse-project\sql-data-warehouse-project\datasets\source_erp\px_cat_g1v2.csv'
@@ -89,9 +105,12 @@ BEGIN
 			FIELDTERMINATOR = ',',
 			TABLOCK
 		);
-		--SELECT COUNT(*) FROM bronze.erp_px_cat_g1v2   ---This is to count the exact number of rows are injected or not into the tables------
+		SET @End_time = GETDATE();
+		PRINT 'Loading Duration:' + CAST(DATEDIFF(second,@Start_time,@End_time) AS NVARCHAR) + 'seconds';
+		PRINT '-------------------------------------'
+		
 	END TRY
-	BEGIN CATCH  --It helps to monitor bottlenecks, optimize performance, monitor trends. detect issues--
+	BEGIN CATCH  --It helps to monitor bottlenecks, optimize performance, monitor trends, detect issues--
 	PRINT '========================================================'
 	PRINT 'Error Messgae' + ERROR_MESSAGE();
 	PRINT 'Error Message' + CAST(ERROR_NUMBER() AS NVARCHAR);
